@@ -1,19 +1,19 @@
-name: Build manuscript and work log
+name: Update work log
 
 on:
   push:
     branches: [main]
 
-# Required so the workflow can push the regenerated log.tex back to main.
+# Required so the workflow can push the regenerated log.md back to main.
 permissions:
   contents: write
 
 concurrency:
-  group: build-main
+  group: update-log-main
   cancel-in-progress: false
 
 jobs:
-  build:
+  update-log:
     # Ignore pushes made by the bot itself, so an infinite loop never occurs.
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
@@ -29,36 +29,18 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Regenerate log.tex
+      - name: Regenerate log.md
         run: python generate_log.py
 
-      - name: Commit and push log.tex
+      - name: Commit and push log.md
         run: |
-          if git diff --quiet -- log.tex; then
-            echo "log.tex is already up to date."
+          git add log.md
+          if git diff --cached --quiet; then
+            echo "log.md is already up to date."
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add log.tex
             git commit -m "[skip ci] Update work log"
             git pull --rebase origin main
             git push origin main
           fi
-
-      - name: Install XeLaTeX and the Noto fonts package
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            texlive-xetex texlive-latex-recommended texlive-latex-extra \
-            texlive-fonts-recommended texlive-fonts-extra
-
-      - name: Compile main.tex (two XeLaTeX passes)
-        run: |
-          xelatex -interaction=nonstopmode -halt-on-error main.tex
-          xelatex -interaction=nonstopmode -halt-on-error main.tex
-
-      - name: Upload PDF artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: main-pdf
-          path: main.pdf
