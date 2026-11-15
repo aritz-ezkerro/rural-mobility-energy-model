@@ -1,0 +1,31 @@
+# LaTeX build files (generated locally by XeLaTeX)
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.xdv
+*.lof
+*.lot
+*.bbl
+*.blg
+/*.pdf
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+*.egg-info/
+
+# Data: keep the folders, ignore the contents
+data/raw/*
+data/interim/*
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+
+# OS files
+Thumbs.db
+.DS_Store
