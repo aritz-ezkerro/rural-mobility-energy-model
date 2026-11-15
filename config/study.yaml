@@ -1,0 +1,128 @@
+# Study configuration: single source of truth for parameters shared by all models.
+# No magic numbers in the code: read everything from here.
+#
+# Convention: null means "not decided yet". Values marked TO_CONFIRM must be
+# resolved (and their source recorded) before the pipeline is run.
+
+study:
+  title: Road transport energy demand in rural areas
+  case_study: Cuadrilla de Gorbeialdea (Álava, Basque Country, Spain)
+  timezone: Europe/Madrid
+  crs_geographic: "EPSG:4326"
+  crs_projected: "EPSG:25830"        # ETRS89 / UTM zone 30N
+  base_year: null                    # TO_CONFIRM: latest year with complete counts, fleet and service data
+  municipalities: []                 # TO_CONFIRM: municipalities and concejos of the cuadrilla
+  influence_area:
+    buffer_km: null                  # TO_CONFIRM: extra zone to capture inbound and outbound trips
+
+# Unit of analysis: road segment x hour x day type.
+# Annual result = sum over day types of (n_days x daily result).
+day_types:
+  calendar_source: null              # TO_CONFIRM: school and labour calendar used
+  items:
+    - id: school_weekday
+      label: School weekday
+      n_days: null                   # TO_CONFIRM: computed from the calendar
+    - id: nonschool_weekday
+      label: Non-school weekday
+      n_days: null
+    - id: saturday
+      label: Saturday
+      n_days: null
+    - id: sunday_holiday
+      label: Sunday or public holiday
+      n_days: null
+  # Validation rule: the n_days values must add up to the days in base_year.
+  seasons: []                        # Optional, e.g. leisure traffic linked to the natural park
+
+# Categories used throughout the model.
+vehicle_classes: [car, van, truck, bus]
+
+trip_types:
+  - internal                         # resident moving within the region
+  - outbound_resident                # resident leaving the region
+  - inbound_nonresident              # non-resident entering the region
+  - through                          # no origin or destination in the region
+
+# Which trip types each solution can act on (see main.tex, Section 3).
+solution_scope:
+  public_transport:  [internal, outbound_resident, inbound_nonresident]   # complete trip counted
+  fuel_substitution: [internal, outbound_resident]                        # resident vehicles
+  speed_management:  [internal, outbound_resident, inbound_nonresident, through]
+
+# Fuels and energy carriers.
+# ncv_kwh_per_unit: net calorific value. Values below are PROVISIONAL: verify
+# them against an official source and record it in `source` before use.
+# petroleum_fraction (phi_c): share of the carrier that is petroleum-derived.
+# primary_energy_factor: end-to-end factor per carrier; depends on the source
+# (and, for electricity, on the mix), so it must be set explicitly.
+fuels:
+  diesel:
+    unit: l
+    ncv_kwh_per_unit: 9.96           # provisional
+    petroleum_fraction: 1.0          # TO_CONFIRM: commercial diesel contains a biofuel blend
+    primary_energy_factor: null
+    source: null
+  petrol:
+    unit: l
+    ncv_kwh_per_unit: 8.9            # provisional
+    petroleum_fraction: 1.0          # TO_CONFIRM: commercial petrol contains a biofuel blend
+    primary_energy_factor: null
+    source: null
+  electricity:
+    unit: kWh
+    ncv_kwh_per_unit: 1.0
+    petroleum_fraction: 0.0
+    primary_energy_factor: null      # TO_CONFIRM: depends on the electricity mix and scenario
+    source: null
+  hvo:
+    unit: l
+    ncv_kwh_per_unit: null
+    petroleum_fraction: 0.0
+    primary_energy_factor: null
+    source: null
+  biomethane:
+    unit: kg
+    ncv_kwh_per_unit: null
+    petroleum_fraction: 0.0
+    primary_energy_factor: null
+    source: null
+  hydrogen:
+    unit: kg
+    ncv_kwh_per_unit: null
+    petroleum_fraction: 0.0
+    primary_energy_factor: null
+    source: null
+
+# Longitudinal dynamics model: P = v (m g Cr cos(theta) + m g sin(theta) + 0.5 rho Cd A v^2)
+physics:
+  gravity_m_s2: 9.81
+  air_density_kg_m3: 1.225           # sea-level reference; consider an altitude correction
+  slope_smoothing_window_m: null     # TO_CONFIRM: depends on DEM resolution
+
+# Per-class parameters. Fill from COPERT / HBEFA or manufacturer data and record the source.
+vehicle_parameters:
+  car:   {mass_kg: null, rolling_resistance: null, cd_a_m2: null, drivetrain_efficiency: null}
+  van:   {mass_kg: null, rolling_resistance: null, cd_a_m2: null, drivetrain_efficiency: null}
+  truck: {mass_kg: null, rolling_resistance: null, cd_a_m2: null, drivetrain_efficiency: null}
+  bus:   {empty_mass_kg: null, mass_per_passenger_kg: null, rolling_resistance: null, cd_a_m2: null, drivetrain_efficiency: null}
+  source: null
+
+# Public transport (Q3).
+public_transport:
+  random_arrival_wait_constant_min: 30   # W = 30 / f minutes, valid for high frequencies
+  minimum_coverage: null                 # TO_CONFIRM: minimum service guaranteed per settlement
+
+# Speed management (Q5).
+speed_management:
+  critical_time_penalty: null            # TO_CONFIRM: agreed with the administrations
+
+# Integration and uncertainty (Q6).
+optimization:
+  objectives: [energy, petroleum, economic_cost, social_cost]
+  evaluation_horizon_years: null
+  discount_rate: null
+sensitivity:
+  method: sobol                          # sobol or morris
+  monte_carlo_samples: null
+random_seed: 42

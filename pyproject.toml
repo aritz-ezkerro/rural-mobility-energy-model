@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rural-mobility-energy-model"
+version = "0.1.0"
+description = "Road transport energy demand, decarbonization levers and multi-objective optimization in rural areas: Cuadrilla de Gorbeialdea case study."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Aritz Ezkerro" }]
+
+# Runtime dependencies are listed in requirements.txt while the project is
+# exploratory. Move them here once the environment is stable.
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
