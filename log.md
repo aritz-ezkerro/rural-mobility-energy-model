@@ -28,3 +28,10 @@
 - Create a new file 'Workspace rules.md' outlining the operational guidelines for the project.
 - Introduce 'methodology.md' detailing the study design, research questions, definitions, and methodologies for analyzing road transport energy demand in the Cuadrilla de Gorbeialdea region.
 - Establish a clear structure for documenting work sessions and automating log generation.
+
+## 2026-11-15 · Add project context and operating rules document
+
+**Start:** 2026-11-15 18:35 · **End:** 2026-11-15 18:35 · **Duration:** 0 min
+
+- Created a comprehensive document outlining the project purpose, environment, language and style rules, repository structure, automation processes, and mandatory operating rules for the assistant.
+- Included detailed sections on the scientific study of road transport energy demand in rural areas.
