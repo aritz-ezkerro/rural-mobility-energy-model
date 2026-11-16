@@ -4,10 +4,8 @@
   log convention, and push.
 
 .EXAMPLE
-  .\scripts\sync.ps1 -Start "11:38" -Title "Update workflow and log" -Tasks "Revise Workflow","Create a sync.ps1 script"
+  .\src\scripts\sync.ps1 -Start "12:02" -Title "Remove a file" -Tasks "Remove a useless file","Update sync.ps1 script"
 
-  For a multi-day session use the long start format:
-  .\scripts\sync.ps1 -Start "2026-11-15--22:00" -Title "..." -Tasks "..."
 #>
 param(
   [Parameter(Mandatory = $true)][string]$Start,
