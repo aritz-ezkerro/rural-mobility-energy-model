@@ -54,3 +54,10 @@
 
 - Revise workflow
 - Create sync.ps1 script
+
+## 2026-11-16 · Remove a file
+
+**Start:** 2026-11-16 12:02 · **End:** 2026-11-16 12:03 · **Duration:** 1 min
+
+- Remove a useless file
+- Update sync.ps1 script
