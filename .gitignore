@@ -31,3 +31,6 @@ Thumbs.db
 .DS_Store
 # Local temporary data (too large for Git)
 temporal_data/
+
+# Geospatial data files (too large for Git)
+*.gpkg

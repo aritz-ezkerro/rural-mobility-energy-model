@@ -1,6 +1,6 @@
-# Project Context and Operating Rules
+# Agents: Project Context and Operating Rules
 
-This document describes the repository, its automation, its conventions and the rules an AI assistant must follow when working in it. It is written to be pasted as a system prompt or stored as a workspace instruction file. It supersedes any earlier version that mentions LaTeX.
+This document describes the repository, its automation, its conventions and the rules an AI assistant must follow when working in it. It is written to be pasted as a system prompt or stored as a workspace instruction file.
 
 ## 1. Purpose of the project
 
