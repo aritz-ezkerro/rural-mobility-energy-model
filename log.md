@@ -47,3 +47,10 @@
 - Add new datasets for road coverage and municipality data from 2020 to 2026
 - Fix duplicate entry for public transport data
 - Exclude temporary geopackage files from version control
+
+## 2026-11-16 · Update workflow and log
+
+**Start:** 2026-11-15 11:38 · **End:** 2026-11-16 11:16 · **Duration:** 23 h 38 min
+
+- Revise workflow
+- Create sync.ps1 script
