@@ -137,7 +137,7 @@ These sources can be downloaded directly. Record the exact version, access date 
  
 | Dataset | Source | Access date | Licence | Status |
 |---|---|---|---|---|
-| Road network | OpenStreetMap (via `osmnx`) | | ODbL | NOTSENT |
+| Road network | OpenStreetMap/ | | ODbL | NOTSENT |
 | Digital elevation model, 30 m | Copernicus DEM / SRTM | | Check provider | NOTSENT |
 | Public transport timetables | Open Data Euskadi, national access point (NAP) | | Check provider | NOTSENT |
 | Origin-destination matrices | Ministry of Transport (MITMA) open mobility data | | Check provider | NOTSENT |

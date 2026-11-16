@@ -29,3 +29,5 @@ data/interim/*
 # OS files
 Thumbs.db
 .DS_Store
+# Local temporary data (too large for Git)
+temporal_data/

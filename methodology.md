@@ -421,3 +421,83 @@ These are indicative timelines for a small team and depend mainly on when the oc
 4. **Make a preliminary estimate of the through-traffic share** with the origin-destination matrices, to know the ceiling of local measures before going deeper.
 5. Agree with the administrations on the critical travel-time penalty threshold (Q5) and the social cost criteria (Q6).
 6. Decide whether to carry out a short mobility survey in the region.
+
+---
+
+## LOG. Steps (APUNTES PROPIOS)
+
+### Mapas y carreteras
+- SE DESCARGAN MAPAS PARA VER CARRETERAS DE GORBEIALDEA. SE VE QUE TODAS LAS CARRETERAS (MENOS BI-3941) TIENEN ALGUNA ESTACIÓN.
+- SE DESCARGA MEDIANTE API LOS FLOWS. SE VE QUE NO ESTAN DISPONIBLE LOS DEL ÚLTIMO AÑO EN TODOS LOS NUCLEOS, PORESO SE VE LA CANTIDAD DE DATOS POR TRAMO. SIGUIENTE RESULTADOS: 
+#### Cobertura de datos de flujos de tráfico (Open Data Euskadi)
+
+Resultado de `python API_flow.py cobertura` (años 2010–2026) para los municipios con medidores identificados:
+Arratzua-Ubarrundia, Zigoitia y Urkabustaiz.
+
+- **Fuente:** API de tráfico de Open Data Euskadi (`/v1.0/flows/byYear/{año}/byMunicipality/...` y `.../byMeter/...`).
+- **Años sin datos en ningún municipio:** 2010–2014, 2025 y 2026 (omitidos en las tablas; todos los valores son 0).
+- **Total de registros 2010–2026:** 948.849.
+- **Cobertura:** registros reales / registros esperados. Se supone 1 registro por franja de 30 min y medidor, es decir, 48 × 365 = 17.520 registros al año por medidor (100 % = sin huecos). Es un supuesto no confirmado en la documentación del API.
+- **Medidores identificados:** Arratzua-Ubarrundia 4, Zigoitia 2, Urkabustaiz 4.
+- **Municipios sin medidores propios localizados:** Aramaio, Legutio y Zuia.
+
+---
+
+1. Registros por municipio y año
+
+| Municipio | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Arratzua-Ubarrundia | 20.600 | 39.262 | 57.774 | 58.573 | 58.863 | 57.644 | 60.724 | 49.572 | 56.013 | 49.647 |
+| Zigoitia | 9.665 | 27.666 | 20.489 | 30.967 | 32.487 | 32.350 | 34.506 | 28.936 | 20.200 | 0 |
+| Urkabustaiz | 20.916 | 32.877 | 31.428 | 1 | 30.747 | 28.747 | 21.819 | 17.889 | 18.487 | 0 |
+| **TOTAL** | **51.181** | **99.805** | **109.691** | **89.541** | **122.097** | **118.741** | **117.049** | **96.397** | **94.700** | **49.647** |
+
+2. Cobertura % (registros reales / esperados)
+
+| Municipio | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Arratzua-Ubarrundia | 29,4 % | 56,0 % | 82,4 % | 83,6 % | 84,0 % | 82,3 % | 86,6 % | 70,7 % | 79,9 % | 70,8 % |
+| Zigoitia | 27,6 % | 79,0 % | 58,5 % | 88,4 % | 92,7 % | 92,3 % | 98,5 % | 82,6 % | 57,6 % | 0,0 % |
+| Urkabustaiz | 29,8 % | 46,9 % | 44,8 % | 0,0 % | 43,9 % | 41,0 % | 31,1 % | 25,5 % | 26,4 % | 0,0 % |
+| **TOTAL** | **29,2 %** | **57,0 %** | **62,6 %** | **51,1 %** | **69,7 %** | **67,8 %** | **66,8 %** | **55,0 %** | **54,1 %** | **28,3 %** |
+
+3. % del total de registros del periodo
+
+Cada fila de municipio se calcula sobre el total de ese municipio; la fila TOTAL, sobre el total global (948.849).
+
+| Municipio | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Arratzua-Ubarrundia | 4,0 % | 7,7 % | 11,4 % | 11,5 % | 11,6 % | 11,3 % | 11,9 % | 9,7 % | 11,0 % | 9,8 % |
+| Zigoitia | 4,1 % | 11,7 % | 8,6 % | 13,1 % | 13,7 % | 13,6 % | 14,5 % | 12,2 % | 8,5 % | 0,0 % |
+| Urkabustaiz | 10,3 % | 16,2 % | 15,5 % | 0,0 % | 15,2 % | 14,2 % | 10,8 % | 8,8 % | 9,1 % | 0,0 % |
+| **TOTAL** | **5,4 %** | **10,5 %** | **11,6 %** | **9,4 %** | **12,9 %** | **12,5 %** | **12,3 %** | **10,2 %** | **10,0 %** | **5,2 %** |
+
+4. Medidores con cobertura ≥ 80 %
+
+| Municipio | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Arratzua-Ubarrundia (4 medidores) | 0 | 0 | 2 | 2 | 2 | 2 | 2 | 1 | 2 | 1 |
+| Zigoitia (2 medidores) | 0 | 1 | 0 | 2 | 2 | 2 | 2 | 2 | 1 | 0 |
+| Urkabustaiz (4 medidores) | 0 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| **TOTAL (10 medidores)** | **0** | **2** | **3** | **4** | **5** | **4** | **4** | **3** | **3** | **1** |
+
+---
+
+5. Resumen
+
+| Criterio | Mejor año | Valor |
+|---|---|---|
+| Más registros | **2019** | 122.097 (12,9 % del total) |
+| Mayor cobertura global | **2019** | 69,7 % |
+| Más medidores con cobertura ≥ 80 % | **2019** | 5 de 10 |
+
+6. Lectura de los resultados
+
+- **2019 es el año con más datos** según los tres criterios, y además es anterior a la pandemia, de modo que no refleja la caída de movilidad de 2020–2021.
+- **Alternativas cercanas:** 2020 y 2021 tienen casi los mismos registros (118.741 y 117.049), pero son años atípicos por la pandemia. 2018 queda penalizado por Urkabustaiz, que tiene un solo registro ese año.
+- **Años recientes:** 2022 y 2023 tienen unos 95.000 registros y 3 medidores bien cubiertos; 2024 solo tiene datos de Arratzua-Ubarrundia, y desde 2025 el API no devuelve flujos para estos municipios.
+- **Urkabustaiz** nunca supera el 50 % de cobertura media (su máximo es 46,9 % en 2016). Solo tiene un medidor con cobertura ≥ 80 % en 2016, 2017 y 2019. Será necesario completar huecos con el día típico del medidor y asumir más incertidumbre.
+- **Zigoitia** cae en 2023 (57,6 %) respecto a 2022 (82,6 %), por lo que 2023 no es buen año para ese municipio.
+- **Compromiso con la definición de año base** del estudio ("último año con datos completos"): 2019 es el mejor en datos de tráfico, pero el más antiguo. Conviene comprobar si el parque de vehículos y la ocupación del autobús que se vayan a usar existen para ese año.
+
+> **Pendiente:** esta tabla cubre solo los municipios con medidores propios en Álava. Las carreteras de Bizkaia de la cuadrilla (BI-xxxx) y los municipios sin medidores localizados (Aramaio, Legutio, Zuia) no están incluidos.

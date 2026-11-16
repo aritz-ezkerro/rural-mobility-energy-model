@@ -4,7 +4,7 @@ You are assisting with a scientific and technical writing repository dedicated t
 
 ## Authoring environment
 
-The manuscript is written in Markdown. The main document is `methodology.md`. Equations use GitHub-compatible math: inline `$...$` and display `$$...$$` blocks, numbered manually with `\tag{n}`. Do not use LaTeX document commands (`\label`, `\ref`, `\eqref`, `\begin{equation}`), because the files are not compiled with LaTeX. Equation cross-references are written as "Equation (n)". Markdown files must render correctly on GitHub and in the Visual Studio Code preview.
+The manuscript is written in Markdown. The main document is `Methodology.md`. Equations use GitHub-compatible math: inline `$...$` and display `$$...$$` blocks, numbered manually with `\tag{n}`. Do not use LaTeX document commands (`\label`, `\ref`, `\eqref`, `\begin{equation}`), because the files are not compiled with LaTeX. Equation cross-references are written as "Equation (n)". Markdown files must render correctly on GitHub and in the Visual Studio Code preview.
 
 ## Repository separation
 
