@@ -61,3 +61,14 @@
 
 - Remove a useless file
 - Update sync.ps1 script
+
+## 2026-11-16 · Sensors_coord part
+
+**Start:** 2026-11-16 15:00 · **End:** 2026-11-16 15:00 · **Duration:** 0 min
+
+- Work the sensors  location
+- Register into docs as relevant dataset
+
+## 2026-11-16 · Renombrar sensors_coord y limpiar archivos temporales
+
+**Start:** 2026-11-16 20:53 · **End:** 2026-11-16 20:53 · **Duration:** 0 min
