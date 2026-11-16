@@ -39,3 +39,11 @@
 ## 2026-11-15 · Remove log.tex file and its associated entries for log automation and project documentation
 
 **Start:** 2026-11-15 18:36 · **End:** 2026-11-15 18:36 · **Duration:** 0 min
+
+## 2026-11-16 · Add datasets register and road coverage data notes
+
+**Start:** 2026-11-16 10:38 · **End:** 2026-11-16 10:51 · **Duration:** 13 min
+
+- Add new datasets for road coverage and municipality data from 2020 to 2026
+- Fix duplicate entry for public transport data
+- Exclude temporary geopackage files from version control
