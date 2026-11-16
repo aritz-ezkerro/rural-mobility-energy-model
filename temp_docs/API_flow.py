@@ -1,107 +1,58 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-=====================================================================
- FLUJOS DE TRÁFICO DE OPEN DATA EUSKADI POR MUNICIPIO  (script único)
-=====================================================================
-Municipios: Aramaio, Arratzua-Ubarrundia, Legutio, Zuia, Zigoitia, Urkabustaiz.
-API: https://api.euskadi.eus/traffic/v1.0   (docs: opendata.euskadi.eus/api-traffic)
+Open Data Euskadi - inventario de sensores y flujos de tráfico por municipio.
 
-REQUISITOS
-    Python 3 + librería requests (ya incluida en Anaconda).
-    Ejecuta siempre desde la carpeta donde esté este archivo:
-        python API_flow.py <modo> [opciones]
+Municipios objetivo:
+  Aramaio, Arratzua-Ubarrundia, Legutio, Zuia, Zigoitia y Urkabustaiz.
 
----------------------------------------------------------------------
- TUTORIAL: QUÉ HACE CADA MODO (en el orden recomendado)
----------------------------------------------------------------------
+Instalación:
+  python -m pip install requests
 
- 1) meters   -> localizar los medidores de cada municipio
-        python API_flow.py meters
-    Busca medidores cerca de cada municipio y se queda con los que el API
-    asigna a él. Imprime cuántos hay por municipio y sus IDs
-    (provinceId, municipalityId). Genera:
-        meters_municipios.csv / meters_municipios.json
-    Si un municipio sale sin medidores, amplía el radio:  --km 15
+Ejemplos:
+  python API_flow.py meters --refresh
+  python API_flow.py ids --provincia 1 --max-municipality-id 200
+  python API_flow.py cobertura --desde 2018 --hasta 2024
+  python API_flow.py probe
+  python API_flow.py flows --year 2023 --municipio Zigoitia --max-pages 2
+  python API_flow.py flows --year 2023 --municipio Zigoitia
+  python API_flow.py flows --year 2023
+  python API_flow.py flows --year 2023 --month 10
+  python API_flow.py flows --year 2023 --month 10 --day 15
 
- 2) ids      -> ver qué municipios de una provincia tienen medidores
-        python API_flow.py ids                 (provincia 1 = Álava)
-        python API_flow.py ids --provincia 48  (Bizkaia)
-    Recorre los IDs 1..99 y escribe nombre y nº de medidores. Útil para
-    localizar municipios que no aparecen en el paso 1. Es lento (~100 consultas).
-
- 3) cobertura -> CUÁNTOS DATOS HAY por municipio y año (para elegir el año)
-        python API_flow.py cobertura                       (2010-2026)
-        python API_flow.py cobertura --desde 2018 --hasta 2024
-    No descarga datos: solo cuenta registros. Muestra por pantalla 4 tablas
-    (municipio x año):
-      - REGISTROS totales.
-      - COBERTURA %: registros reales / registros esperados. Se supone 1
-        registro por franja de 30 min y medidor => 48 x 365 = 17.520 al año
-        (100 % = medidor sin huecos).
-      - % DEL TOTAL: cada año como porcentaje de todos los registros del
-        periodo (reparto de los datos entre años).
-      - MEDIDORES con cobertura >= 80 %.
-    Y resume el mejor año. Genera:
-        cobertura_municipio_anio_<desde>_<hasta>.csv
-        cobertura_medidor_anio_<desde>_<hasta>.csv   (detalle por medidor)
-
- 4) probe    -> diagnóstico si algo no cuadra
-        python API_flow.py probe
-    Lista las fuentes del API y, por municipio, los flujos por año, por
-    fechas recientes y por medidor. Úsalo solo para depurar.
-
- 5) flows    -> DESCARGAR los flujos (franjas de 30 min, 20 registros/página)
-        python API_flow.py flows --year 2023 --municipio zigoitia --max-pages 40   # prueba
-        python API_flow.py flows --year 2023 --municipio zigoitia                  # un municipio
-        python API_flow.py flows --year 2023                                       # todos
-        python API_flow.py flows --year 2023 --month 10 --day 15                   # un día
-    Descarga en paralelo (--workers 8 por defecto; baja a 4 si hay errores)
-    y guarda un CSV por municipio:
-        flujos_<municipio>_<periodo>.csv   (+ flujos_todos_<periodo>.csv)
-    Columnas: meterDate, timeRank, meterId, sourceId, totalVehicles, speedAvg,
-    occupancy, levelOfService, long_* (vehículos por longitud), vel_*
-    (vehículos por velocidad), y descripción y coordenadas del medidor.
-    ANTES de descargar un año completo, mira el tamaño con --max-pages 1
-    (imprime "N elementos en M páginas").
-
----------------------------------------------------------------------
- FLUJO DE TRABAJO TÍPICO
----------------------------------------------------------------------
-    meters  ->  cobertura  ->  elegir año  ->  flows --year AÑO
-
----------------------------------------------------------------------
- OPCIONES
----------------------------------------------------------------------
-    --year / --month / --day   periodo a descargar (solo flows)
-    --desde / --hasta          rango de años (solo cobertura; 2010-2026)
-    --municipio TEXTO          descargar solo ese municipio (flows)
-    --max-pages N              limitar páginas por municipio (pruebas)
-    --km N                     radio de búsqueda de medidores (def. 8)
-    --provincia N              provincia para el modo ids (def. 1)
-    --workers N                peticiones simultáneas (def. 8)
-
----------------------------------------------------------------------
- NOTAS
----------------------------------------------------------------------
- - El API ignora _pageSize: siempre 20 registros por página.
- - Algunos años no tienen datos (en las pruebas, desde 2025 no hay flujos).
- - Si el servidor da errores 500 el script reintenta solo; si persisten,
-   baja --workers.
- - MANUAL_IDS (más abajo) permite fijar a mano (provinceId, municipalityId).
+Notas:
+- El inventario usa /meters/byMunicipality/{provinceId}/{municipalityId}.
+- El descubrimiento de IDs recorre un rango configurable. No garantiza encontrar
+  IDs superiores a --max-municipality-id; revisa el resultado de "ids".
+- La caché meters_municipios.json se reutiliza salvo que uses --refresh.
+- El API puede limitar o cambiar su paginación. El script informa de páginas fallidas.
 """
+from __future__ import annotations
+
 import argparse
+import calendar
 import csv
 import json
+import logging
 import os
+import re
+import sys
 import time
 import unicodedata
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
+from typing import Any
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 BASE = "https://api.euskadi.eus/traffic/v1.0"
+CACHE_MEDIDORES = "meters_municipios.json"
+WORKERS = 6
+PAGE_SIZE = None
+TIMEOUT = (10, 60)
 
 MUNICIPIOS = {
     "Aramaio": ["aramaio"],
@@ -112,487 +63,538 @@ MUNICIPIOS = {
     "Urkabustaiz": ["urkabustaiz", "urcabustaiz"],
 }
 
-# Puntos aproximados (lat, lon) de cada municipio para buscar medidores cercanos
-CENTROS = {
-    "Aramaio": (43.04, -2.57),
-    "Arratzua-Ubarrundia": (42.90, -2.63),
-    "Legutio": (42.98, -2.63),
-    "Zuia": (42.96, -2.87),
-    "Zigoitia": (42.95, -2.78),
-    "Urkabustaiz": (42.99, -2.94),
+# Códigos municipales INE de los seis municipios objetivo.
+# Formato INE: 01XXX = provincia 01 (Álava) + código municipal de 3 dígitos.
+# El endpoint de la API recibe provincia y municipio por separado:
+# /meters/byMunicipality/{provinceId}/{municipalityId}
+CODIGOS_MUNICIPALES = {
+    "Aramaio": "01003",
+    "Arratzua-Ubarrundia": "01008",
+    "Legutio": "01058",
+    "Zuia": "01063",
+    "Zigoitia": "01018",
+    "Urkabustaiz": "01054",
 }
 
-CACHE_MEDIDORES = "meters_municipios.json"
-ESPERADO_ANUAL = 48 * 365  # franjas de 30 min en un año sin huecos (supuesto)
-WORKERS = 8  # peticiones simultáneas (--workers)
-PAGE_SIZE = None  # se rellena con --page-size (parámetro _pageSize del API, sin verificar)
-
-# Rellenar a mano si hace falta: "Zuia": (provinceId, municipalityId)
-MANUAL_IDS = {}
+MANUAL_IDS: dict[str, tuple[int, int]] = {
+    nombre: (int(codigo[:2]), int(codigo[2:]))
+    for nombre, codigo in CODIGOS_MUNICIPALES.items()
+}
 
 
-def norm(t):
-    t = unicodedata.normalize("NFD", str(t))
-    return "".join(c for c in t if unicodedata.category(c) != "Mn").lower()
+def normalizar(valor: Any) -> str:
+    texto = unicodedata.normalize("NFD", str(valor or ""))
+    texto = "".join(c for c in texto if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9]", "", texto.lower())
 
 
-def extraer_lista(data):
+def extraer_lista(data: Any) -> list:
+    """Admite listas directas y formatos habituales de respuestas paginadas."""
     if isinstance(data, list):
         return data
-    if isinstance(data, dict):
-        for v in data.values():
-            if isinstance(v, list):
-                return v
+    if not isinstance(data, dict):
+        return []
+    for clave in ("features", "items", "results", "data", "meters", "flows"):
+        valor = data.get(clave)
+        if isinstance(valor, list):
+            return valor
+    # Compatibilidad con respuestas cuyo nombre de colección varía.
+    for valor in data.values():
+        if isinstance(valor, list):
+            return valor
     return []
 
 
-def pedir(session, ruta, pagina, intentos=4, silencioso=False):
-    """GET con reintentos si el servidor devuelve 5xx o se corta la conexión."""
-    ultimo = None
-    for i in range(intentos):
-        try:
-            params = {"_page": pagina}
-            if PAGE_SIZE:
-                params["_pageSize"] = PAGE_SIZE
-            r = session.get(BASE + ruta, params=params, timeout=60)
-            if r.status_code < 500:
-                return r
-            ultimo = f"HTTP {r.status_code}"
-        except requests.RequestException as e:
-            ultimo = str(e)
-        if silencioso:
-            return None
-        time.sleep(2 * (i + 1))
-    print(f"\n  AVISO: fallo persistente en {ruta} página {pagina} ({ultimo}); se omite")
-    return None
+def propiedades(registro: Any) -> dict:
+    if not isinstance(registro, dict):
+        return {}
+    props = registro.get("properties")
+    return props if isinstance(props, dict) else registro
 
 
-def _lista_pagina(session, ruta, pagina):
-    r = pedir(session, ruta, pagina)
-    if r is None or r.status_code != 200:
+def nombre_municipio(props: dict) -> str | None:
+    texto = normalizar(props.get("municipality") or props.get("municipalityName"))
+    if not texto:
         return None
-    try:
-        return extraer_lista(r.json())
-    except ValueError:
-        return None
-
-
-def descargar(session, ruta, max_paginas=None):
-    """Descarga todas las páginas (20 registros/página) pidiendo varias a la vez."""
-    r = pedir(session, ruta, 1)
-    if r is None:
-        return []
-    if r.status_code == 404:
-        print(f"  HTTP 404 (sin datos o ruta inexistente): {r.text[:200]}")
-        return []
-    r.raise_for_status()
-    data = r.json()
-    lote = extraer_lista(data)
-    if not lote:
-        print(f"  respuesta vacía (HTTP {r.status_code}): {r.text[:200]}")
-        return []
-    total = int(data.get("totalPages", 1) or 1) if isinstance(data, dict) else 1
-    if isinstance(data, dict):
-        print(f"  {data.get('totalItems', '?')} elementos en {total} páginas")
-    limite = min(total, max_paginas) if max_paginas else total
-
-    paginas = {1: lote}
-    pendientes = list(range(2, limite + 1))
-    for _ in range(3):  # hasta 3 rondas para reintentar las páginas fallidas
-        if not pendientes:
-            break
-        fallidas = []
-        with ThreadPoolExecutor(max_workers=WORKERS) as ex:
-            futuros = {ex.submit(_lista_pagina, session, ruta, p): p for p in pendientes}
-            for fut in as_completed(futuros):
-                p = futuros[fut]
-                res = fut.result()
-                if res is None:
-                    fallidas.append(p)
-                else:
-                    paginas[p] = res
-                print(f"  {len(paginas)}/{limite} páginas", end="\r")
-        pendientes = fallidas
-    if pendientes:
-        print(f"\n  AVISO: {len(pendientes)} páginas sin descargar: {sorted(pendientes)[:20]}")
-    print()
-    resultados = []
-    for p in sorted(paginas):
-        resultados.extend(paginas[p])
-    return resultados
-
-
-def propiedades(registro):
-    """En GeoJSON los datos están en 'properties'."""
-    if isinstance(registro, dict) and isinstance(registro.get("properties"), dict):
-        return registro["properties"]
-    return registro
-
-
-def municipio_de_medidor(props):
-    texto = norm(props.get("municipality", ""))
     for nombre, variantes in MUNICIPIOS.items():
-        if any(v in texto for v in variantes):
+        if any(normalizar(v) in texto for v in variantes):
             return nombre
     return None
 
 
-def guardar_csv(filas, ruta):
-    columnas = list(dict.fromkeys(k for f in filas for k in f))
-    with open(ruta, "w", newline="", encoding="utf-8-sig") as f:
-        w = csv.DictWriter(f, fieldnames=columnas)
-        w.writeheader()
-        w.writerows(filas)
+def configurar_sesion() -> requests.Session:
+    sesion = requests.Session()
+    reintentos = Retry(
+        total=5,
+        connect=5,
+        read=5,
+        status=5,
+        backoff_factor=1.0,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset(["GET"]),
+        respect_retry_after_header=True,
+    )
+    adaptador = HTTPAdapter(max_retries=reintentos, pool_connections=WORKERS,
+                            pool_maxsize=WORKERS)
+    sesion.mount("https://", adaptador)
+    sesion.mount("http://", adaptador)
+    sesion.headers.update({"Accept": "application/json, application/geo+json, */*",
+                           "User-Agent": "API-flow-Euskadi/2.0"})
+    return sesion
+
+
+def pedir(sesion: requests.Session, ruta: str, pagina: int = 1,
+          silencioso: bool = False) -> requests.Response | None:
+    params = {"_page": pagina}
+    if PAGE_SIZE:
+        params["_pageSize"] = PAGE_SIZE
+    try:
+        respuesta = sesion.get(BASE + ruta, params=params, timeout=TIMEOUT)
+        if respuesta.status_code == 404 and silencioso:
+            return None
+        if respuesta.status_code >= 400:
+            if silencioso:
+                return None
+            respuesta.raise_for_status()
+        return respuesta
+    except requests.RequestException as exc:
+        if not silencioso:
+            logging.warning("Error consultando %s (página %s): %s", ruta, pagina, exc)
+        return None
+
+
+def descargar(sesion: requests.Session, ruta: str,
+              max_paginas: int | None = None) -> list:
+    """Descarga las páginas de forma secuencial para evitar compartir Session."""
+    primera = pedir(sesion, ruta, 1)
+    if primera is None:
+        return []
+    if primera.status_code == 404:
+        logging.info("Ruta sin datos (404): %s", ruta)
+        return []
+    try:
+        data = primera.json()
+    except ValueError:
+        logging.warning("Respuesta no JSON en %s", ruta)
+        return []
+
+    resultados = extraer_lista(data)
+    total_paginas = 1
+    if isinstance(data, dict):
+        try:
+            total_paginas = max(1, int(data.get("totalPages") or 1))
+        except (TypeError, ValueError):
+            total_paginas = 1
+        logging.info("%s: %s elementos, %s páginas",
+                     ruta, data.get("totalItems", "?"), total_paginas)
+
+    limite = min(total_paginas, max_paginas) if max_paginas else total_paginas
+    fallidas = []
+    for pagina in range(2, limite + 1):
+        respuesta = pedir(sesion, ruta, pagina)
+        if respuesta is None:
+            fallidas.append(pagina)
+            continue
+        try:
+            resultados.extend(extraer_lista(respuesta.json()))
+        except ValueError:
+            fallidas.append(pagina)
+        if pagina % 10 == 0 or pagina == limite:
+            print(f"  páginas: {pagina}/{limite}", end="\r", flush=True)
+
+    if limite > 1:
+        print()
+    if fallidas:
+        logging.warning("%s páginas no descargadas en %s: %s",
+                        len(fallidas), ruta, fallidas)
+    if max_paginas and total_paginas > max_paginas:
+        logging.warning("Descarga limitada a %s de %s páginas.", max_paginas,
+                        total_paginas)
+    return resultados
+
+
+def guardar_json(datos: Any, ruta: str) -> None:
+    with open(ruta, "w", encoding="utf-8") as archivo:
+        json.dump(datos, archivo, ensure_ascii=False, indent=2)
+
+
+def guardar_csv(filas: list[dict], ruta: str) -> None:
+    if not filas:
+        logging.warning("No se crea %s: no hay filas.", ruta)
+        return
+    columnas = list(dict.fromkeys(k for fila in filas for k in fila))
+    with open(ruta, "w", newline="", encoding="utf-8-sig") as archivo:
+        escritor = csv.DictWriter(archivo, fieldnames=columnas, extrasaction="ignore")
+        escritor.writeheader()
+        escritor.writerows(filas)
     print(f"Guardado: {ruta} ({len(filas)} filas)")
 
 
-def buscar_medidores(session, km):
-    """Medidores de los municipios pedidos, buscando por ubicación."""
+def descubrir_ids_municipios(sesion: requests.Session, provincia: int,
+                             max_id: int) -> dict[str, tuple[int, int]]:
+    """Busca IDs de municipio que devuelvan sensores y reconoce los seis objetivos."""
     encontrados = {}
-    for muni, (lat, lon) in CENTROS.items():
-        print(f"Buscando medidores cerca de {muni} ({km} km)...")
-        for m in descargar(session, f"/meters/byLocation/{lat}/{lon}/{km}"):
-            p = propiedades(m)
-            nombre = municipio_de_medidor(p)
-            if nombre and p.get("meterId") not in encontrados:
-                encontrados[p["meterId"]] = {"municipio": nombre, **p}
-    return list(encontrados.values())
-
-
-def cmd_meters(session, km):
-    medidores = buscar_medidores(session, km)
-    if not medidores:
-        print("No se han encontrado medidores. Prueba con --km 15 o --km 25.")
-        return
-    with open(CACHE_MEDIDORES, "w", encoding="utf-8") as f:
-        json.dump(medidores, f, indent=2, ensure_ascii=False)
-    guardar_csv(medidores, "meters_municipios.csv")
-
-    resumen, ids = {}, {}
-    for m in medidores:
-        resumen[m["municipio"]] = resumen.get(m["municipio"], 0) + 1
-        ids[m["municipio"]] = (m.get("provinceId"), m.get("municipalityId"))
-    print("\nMedidores por municipio:", resumen)
-    print("IDs (provinceId, municipalityId):", ids)
-    faltan = [m for m in MUNICIPIOS if m not in resumen]
-    if faltan:
-        print("SIN medidores encontrados:", ", ".join(faltan), "-> prueba con --km 15")
-
-
-def cmd_ids(session, provincia):
-    """Escanea los IDs de municipio de una provincia y muestra su nombre."""
-    print(f"Municipios con medidores en la provincia {provincia}:")
-    for mid in range(1, 100):
-        r = pedir(session, f"/meters/byMunicipality/{provincia}/{mid}", 1,
-                  intentos=1, silencioso=True)
-        if r is None or r.status_code != 200:
+    print(f"Explorando IDs municipales 1..{max_id} de la provincia {provincia}...")
+    for mid in range(1, max_id + 1):
+        ruta = f"/meters/byMunicipality/{provincia}/{mid}"
+        respuesta = pedir(sesion, ruta, 1, silencioso=True)
+        if respuesta is None or respuesta.status_code != 200:
             continue
         try:
-            data = r.json()
+            data = respuesta.json()
+            elementos = extraer_lista(data)
         except ValueError:
             continue
-        feats = extraer_lista(data)
-        if feats:
-            p = propiedades(feats[0])
-            print(f"  id {mid:>3}: {p.get('municipality')} "
-                  f"({data.get('totalItems', '?')} medidores)")
+        if not elementos:
+            continue
+        props = propiedades(elementos[0])
+        muni = nombre_municipio(props)
+        nombre_api = props.get("municipality") or props.get("municipalityName") or "?"
+        print(f"  ID {mid}: {nombre_api} ({data.get('totalItems', len(elementos))} sensores)")
+        if muni:
+            encontrados[muni] = (provincia, mid)
+    encontrados.update(MANUAL_IDS)
+    return encontrados
 
 
-def total_items(session, ruta, reintentar=False):
-    """Devuelve totalItems de una ruta (o None si falla)."""
-    r = pedir(session, ruta, 1, intentos=3 if reintentar else 1, silencioso=not reintentar)
-    if r is None or r.status_code != 200:
-        return None if r is None else f"HTTP {r.status_code}"
-    try:
-        return r.json().get("totalItems")
-    except ValueError:
-        return "no-JSON"
-
-
-def cmd_probe(session, km):
-    """Averigua en qué años/fechas/medidores hay datos de flujos."""
-    medidores = cargar_medidores(session, km)
-    ids = resolver_ids(medidores)
-
-    print("\n=== FUENTES (sources) ===")
-    r = pedir(session, "/sources", 1, intentos=1, silencioso=True)
-    if r is not None and r.status_code == 200:
-        print(r.text[:2000])
-
-    hoy = date.today()
-    fechas = [hoy - timedelta(days=d) for d in (1, 7, 30, 90, 180, 365)]
+def obtener_inventario(sesion: requests.Session, provincia: int,
+                       max_id: int) -> list[dict]:
+    ids = descubrir_ids_municipios(sesion, provincia, max_id)
+    inventario = {}
     for muni, (prov, mid) in ids.items():
-        mm = [m for m in medidores if m["municipio"] == muni]
-        print(f"\n=== {muni} (prov {prov}, mun {mid}) ===")
-        print("  medidores por sourceId:", dict(Counter(m.get("sourceId") for m in mm)))
-        print("  flujos por año:")
-        for y in range(2015, hoy.year + 1):
-            n = total_items(session, f"/flows/byYear/{y}/byMunicipality/{prov}/{mid}")
-            print(f"    {y}: {n}")
-        print("  flujos por fecha:")
-        for f in fechas:
-            n = total_items(
-                session, f"/flows/byDate/{f.year}/{f.month}/{f.day}/byMunicipality/{prov}/{mid}")
-            print(f"    {f}: {n}")
-        print("  primeros medidores (flujos por año, por medidor):")
-        for m in mm[:3]:
-            res = {y: total_items(session, f"/flows/byYear/{y}/byMeter/{m['meterId']}")
-                   for y in (2022, 2023, 2024, 2025, hoy.year)}
-            print(f"    meter {m['meterId']} (source {m.get('sourceId')}): {res}")
-
-
-def entero(v):
-    return v if isinstance(v, int) else None
-
-
-def cmd_cobertura(session, km, desde, hasta):
-    """Tabla de registros de flujos por municipio y año, y por medidor y año."""
-    medidores = cargar_medidores(session, km)
-    ids = resolver_ids(medidores)
-    anios = list(range(desde, hasta + 1))
-
-    tareas = []
-    for muni, (prov, mid) in ids.items():
-        for y in anios:
-            tareas.append(("muni", muni, None, y,
-                           f"/flows/byYear/{y}/byMunicipality/{prov}/{mid}"))
-        for m in medidores:
-            if m["municipio"] == muni:
-                for y in anios:
-                    tareas.append(("meter", muni, m["meterId"], y,
-                                   f"/flows/byYear/{y}/byMeter/{m['meterId']}"))
-    print(f"{len(tareas)} consultas ({len(ids)} municipios, años {desde}-{hasta})...")
-
-    res = {}
-    with ThreadPoolExecutor(max_workers=WORKERS) as ex:
-        futs = {ex.submit(total_items, session, t[4], True): t for t in tareas}
-        for i, fut in enumerate(as_completed(futs), 1):
-            t = futs[fut]
-            res[t[:4]] = entero(fut.result())
-            print(f"  {i}/{len(tareas)}", end="\r")
-    print()
-
-    # --- tabla por medidor y año ---
-    filas_med = []
-    for muni in ids:
-        for m in medidores:
-            if m["municipio"] != muni:
+        ruta = f"/meters/byMunicipality/{prov}/{mid}"
+        print(f"\nDescargando sensores de {muni}...")
+        registros = descargar(sesion, ruta)
+        for registro in registros:
+            props = propiedades(registro)
+            meter_id = props.get("meterId")
+            if meter_id is None:
                 continue
-            for y in anios:
-                n = res.get(("meter", muni, m["meterId"], y))
-                filas_med.append({
-                    "municipio": muni, "meterId": m["meterId"],
-                    "descripcion": m.get("description"),
-                    "lat": m.get("latitude"), "lon": m.get("longitude"),
-                    "anio": y, "registros": n,
-                    "cobertura_pct": None if n is None else round(100 * n / ESPERADO_ANUAL, 1),
-                })
-
-    # --- tabla por municipio y año ---
-    filas_mun = []
-    for muni in ids:
-        meds = [m for m in medidores if m["municipio"] == muni]
-        for y in anios:
-            n = res.get(("muni", muni, None, y))
-            por_med = [f["registros"] for f in filas_med
-                       if f["municipio"] == muni and f["anio"] == y]
-            filas_mun.append({
-                "municipio": muni, "anio": y, "n_medidores": len(meds),
-                "registros": n,
-                "esperados": len(meds) * ESPERADO_ANUAL,
-                "cobertura_pct": None if n is None else round(
-                    100 * n / (len(meds) * ESPERADO_ANUAL), 1),
-                "medidores_con_datos": sum(1 for v in por_med if v),
-                "medidores_cobertura_ge80": sum(
-                    1 for v in por_med if v and v / ESPERADO_ANUAL >= 0.8),
-            })
-
-    # % del total de registros del periodo (por municipio y global)
-    tot_muni = {m: sum(f["registros"] or 0 for f in filas_mun if f["municipio"] == m)
-                for m in ids}
-    tot_global = sum(tot_muni.values())
-    for f in filas_mun:
-        base_m = tot_muni[f["municipio"]]
-        n = f["registros"]
-        f["pct_del_total_municipio"] = (
-            None if n is None or not base_m else round(100 * n / base_m, 1))
-        f["pct_del_total_global"] = (
-            None if n is None or not tot_global else round(100 * n / tot_global, 1))
-
-    guardar_csv(filas_mun, f"cobertura_municipio_anio_{desde}_{hasta}.csv")
-    guardar_csv(filas_med, f"cobertura_medidor_anio_{desde}_{hasta}.csv")
-
-    # --- resumen en pantalla ---
-    def get(muni, campo, y):
-        return next(f[campo] for f in filas_mun if f["municipio"] == muni and f["anio"] == y)
-
-    def cuadro(titulo, campo, fmt, total):
-        print(f"\n{titulo}")
-        print(f"{'municipio':<20}" + "".join(f"{y:>9}" for y in anios))
-        for muni in ids:
-            linea = f"{muni:<20}"
-            for y in anios:
-                v = get(muni, campo, y)
-                linea += f"{'-' if v is None else fmt(v):>9}"
-            print(linea)
-        tt = {y: total(y) for y in anios}
-        print(f"{'TOTAL':<20}" + "".join(
-            f"{('-' if tt[y] is None else fmt(tt[y])):>9}" for y in anios))
-        return tt
-
-    miles = lambda v: f"{v:,}".replace(",", ".")
-    pct = lambda v: f"{v:.1f}%"
-
-    def suma(campo):
-        return lambda y: sum(get(m, campo, y) or 0 for m in ids)
-
-    def cobertura_global(y):
-        esp = sum(get(m, "esperados", y) for m in ids)
-        return round(100 * suma("registros")(y) / esp, 1) if esp else None
-
-    def pct_global(y):
-        return round(100 * suma("registros")(y) / tot_global, 1) if tot_global else None
-
-    tot_reg = cuadro("1) REGISTROS por municipio y año:", "registros", miles, suma("registros"))
-    tot_cob = cuadro("2) COBERTURA % (registros reales / esperados, 100 % = sin huecos):",
-                     "cobertura_pct", pct, cobertura_global)
-    cuadro("3) % DEL TOTAL de registros del periodo (fila municipio: sobre su propio total;"
-           " TOTAL: sobre el total global):", "pct_del_total_municipio", pct, pct_global)
-    tot_ok = cuadro("4) MEDIDORES con cobertura >= 80 %:", "medidores_cobertura_ge80",
-                    str, suma("medidores_cobertura_ge80"))
-
-    mejor = max(anios, key=lambda y: tot_reg[y])
-    mejor_cob = max(anios, key=lambda y: tot_cob[y] or 0)
-    mejor_ok = max(anios, key=lambda y: tot_ok[y])
-    print(f"\nTotal de registros en {desde}-{hasta}: {miles(tot_global)}")
-    print(f"Año con más registros:                 {mejor} ({miles(tot_reg[mejor])};"
-          f" {pct_global(mejor)} % del total)")
-    print(f"Año con mayor cobertura global:        {mejor_cob} ({tot_cob[mejor_cob]} %)")
-    print(f"Año con más medidores bien cubiertos:  {mejor_ok} ({tot_ok[mejor_ok]} medidores)")
+            fila = dict(props)
+            fila["municipio"] = muni
+            # Coordenadas: se conservan las que entregue el API.
+            geom = registro.get("geometry") if isinstance(registro, dict) else None
+            if isinstance(geom, dict) and geom.get("type") == "Point":
+                coords = geom.get("coordinates") or []
+                if len(coords) >= 2:
+                    fila.setdefault("longitude", coords[0])
+                    fila.setdefault("latitude", coords[1])
+            fila["latitude"] = fila.get("latitude", fila.get("lat"))
+            fila["longitude"] = fila.get("longitude", fila.get("lon", fila.get("lng")))
+            inventario[str(meter_id)] = fila
+        print(f"  sensores recibidos: {len(registros)}")
+    return list(inventario.values())
 
 
-def cargar_medidores(session, km):
-    if os.path.exists(CACHE_MEDIDORES):
-        with open(CACHE_MEDIDORES, encoding="utf-8") as f:
-            return json.load(f)
-    return buscar_medidores(session, km)
+def cargar_medidores(sesion: requests.Session, provincia: int,
+                     max_id: int, refresh: bool = False) -> list[dict]:
+    if not refresh and os.path.exists(CACHE_MEDIDORES):
+        try:
+            with open(CACHE_MEDIDORES, encoding="utf-8") as archivo:
+                datos = json.load(archivo)
+            if isinstance(datos, list) and datos:
+                print(f"Inventario leído de caché: {CACHE_MEDIDORES} ({len(datos)} sensores)")
+                return datos
+        except (OSError, json.JSONDecodeError):
+            logging.warning("Caché ilegible; se volverá a descargar.")
+    datos = obtener_inventario(sesion, provincia, max_id)
+    if datos:
+        guardar_json(datos, CACHE_MEDIDORES)
+        guardar_csv(datos, "meters_municipios.csv")
+        coordenadas = [m for m in datos
+                       if m.get("latitude") is not None and m.get("longitude") is not None]
+        guardar_csv(coordenadas, "coordenadas_todos_los_sensores.csv")
+        sin_coords = len(datos) - len(coordenadas)
+        print(f"\nInventario total: {len(datos)}; con coordenadas: {len(coordenadas)}; "
+              f"sin coordenadas: {sin_coords}")
+    else:
+        logging.error("No se encontró ningún sensor. Revisa provincia/IDs/API.")
+    return datos
 
 
-def resolver_ids(medidores):
+def resolver_ids(medidores: list[dict], provincia: int,
+                 max_id: int) -> dict[str, tuple[int, int]]:
     ids = {}
     for m in medidores:
-        if m["municipio"] not in ids and m.get("municipalityId"):
-            ids[m["municipio"]] = (m.get("provinceId"), m["municipalityId"])
+        muni = m.get("municipio")
+        prov, mid = m.get("provinceId"), m.get("municipalityId")
+        if muni and prov is not None and mid is not None:
+            ids.setdefault(muni, (int(prov), int(mid)))
     ids.update(MANUAL_IDS)
     return ids
 
 
-def aplanar_flujo(fl):
-    """Una fila por Flow, con los intervalos de longitud y velocidad en columnas."""
-    fl = propiedades(fl)
-    fila = {
-        "meterDate": fl.get("meterDate"),
-        "timeRank": fl.get("timeRank"),
-        "meterId": fl.get("meterId"),
-        "sourceId": fl.get("sourceId"),
-        "totalVehicles": fl.get("totalVehicles"),
-        "speedAvg": fl.get("speedAvg"),
-        "occupancy": fl.get("occupancy"),
-        "levelOfService": fl.get("levelOfService"),
-    }
-    for it in fl.get("lengthIntervals") or []:
-        nombre = it.get("lengthInterval") or f"{it.get('lengthMin')}-{it.get('lengthMax')}"
-        fila[f"long_{nombre}"] = it.get("vehicles")
-    for it in fl.get("speedIntervals") or []:
-        nombre = it.get("speedInterval") or f"{it.get('speedMin')}-{it.get('speedMax')}"
-        fila[f"vel_{nombre}"] = it.get("vehicles")
+def cmd_meters(sesion, args):
+    datos = cargar_medidores(sesion, args.provincia, args.max_municipality_id,
+                             refresh=args.refresh)
+    resumen = Counter(m.get("municipio", "Sin municipio") for m in datos)
+    print("\nSensores por municipio:")
+    for muni in MUNICIPIOS:
+        print(f"  {muni}: {resumen.get(muni, 0)}")
+    no_encontrados = [m for m in MUNICIPIOS if not resumen.get(m)]
+    if no_encontrados:
+        print("Sin sensores reconocidos:", ", ".join(no_encontrados))
+        print("Comprueba los IDs con: python API_flow.py ids --provincia "
+              f"{args.provincia} --max-municipality-id {args.max_municipality_id}")
+
+
+def cmd_ids(sesion, args):
+    ids = descubrir_ids_municipios(sesion, args.provincia, args.max_municipality_id)
+    print("\nCoincidencias con municipios objetivo:")
+    for muni, (prov, mid) in ids.items():
+        print(f"  {muni}: provinceId={prov}, municipalityId={mid}")
+
+
+def total_items(sesion, ruta: str):
+    respuesta = pedir(sesion, ruta, 1, silencioso=True)
+    if respuesta is None or respuesta.status_code != 200:
+        return None
+    try:
+        data = respuesta.json()
+        return data.get("totalItems") if isinstance(data, dict) else len(extraer_lista(data))
+    except ValueError:
+        return None
+
+
+def cmd_probe(sesion, args):
+    medidores = cargar_medidores(sesion, args.provincia,
+                                 args.max_municipality_id, args.refresh)
+    ids = resolver_ids(medidores, args.provincia, args.max_municipality_id)
+    print("\n=== FUENTES ===")
+    respuesta = pedir(sesion, "/sources", 1, silencioso=True)
+    if respuesta is not None:
+        print(respuesta.text[:3000])
+    hoy = date.today()
+    fechas = [hoy - timedelta(days=d) for d in (1, 7, 30, 90, 180, 365)]
+    for muni, (prov, mid) in ids.items():
+        sensores = [m for m in medidores if m.get("municipio") == muni]
+        print(f"\n=== {muni} (provincia {prov}, municipio {mid}) ===")
+        print("Sensores:", len(sensores),
+              "| sourceId:", dict(Counter(m.get("sourceId") for m in sensores)))
+        for anio in range(max(2010, hoy.year - 10), hoy.year + 1):
+            n = total_items(sesion, f"/flows/byYear/{anio}/byMunicipality/{prov}/{mid}")
+            print(f"  año {anio}: {n}")
+        for fecha in fechas:
+            ruta = (f"/flows/byDate/{fecha.year}/{fecha.month}/{fecha.day}"
+                    f"/byMunicipality/{prov}/{mid}")
+            print(f"  fecha {fecha}: {total_items(sesion, ruta)}")
+
+
+def esperado_anual(anio: int) -> int:
+    return 48 * (366 if calendar.isleap(anio) else 365)
+
+
+def cmd_cobertura(sesion, args):
+    medidores = cargar_medidores(sesion, args.provincia,
+                                 args.max_municipality_id, args.refresh)
+    ids = resolver_ids(medidores, args.provincia, args.max_municipality_id)
+    anios = range(args.desde, args.hasta + 1)
+    tareas = []
+    for muni, (prov, mid) in ids.items():
+        for anio in anios:
+            tareas.append(("municipio", muni, None, anio,
+                           f"/flows/byYear/{anio}/byMunicipality/{prov}/{mid}"))
+        for med in medidores:
+            if med.get("municipio") == muni:
+                for anio in anios:
+                    tareas.append(("sensor", muni, med.get("meterId"), anio,
+                                   f"/flows/byYear/{anio}/byMeter/{med.get('meterId')}"))
+    print(f"Consultas de cobertura: {len(tareas)}")
+    resultados = {}
+    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        futuros = {pool.submit(total_items, sesion, t[4]): t for t in tareas}
+        for i, futuro in enumerate(as_completed(futuros), 1):
+            tipo, muni, meter_id, anio, _ = futuros[futuro]
+            try:
+                resultados[(tipo, muni, meter_id, anio)] = futuro.result()
+            except Exception as exc:
+                logging.warning("Fallo de consulta: %s", exc)
+                resultados[(tipo, muni, meter_id, anio)] = None
+            if i % 20 == 0 or i == len(tareas):
+                print(f"  {i}/{len(tareas)}", end="\r", flush=True)
+    print()
+
+    filas_municipio, filas_sensor = [], []
+    for muni in ids:
+        sensores = [m for m in medidores if m.get("municipio") == muni]
+        for anio in anios:
+            n = resultados.get(("municipio", muni, None, anio))
+            esperado = len(sensores) * esperado_anual(anio)
+            sensores_ok = []
+            for med in sensores:
+                nm = resultados.get(("sensor", muni, med.get("meterId"), anio))
+                if nm is not None and nm > 0:
+                    sensores_ok.append(nm)
+                filas_sensor.append({
+                    "municipio": muni, "meterId": med.get("meterId"),
+                    "descripcion": med.get("description"),
+                    "lat": med.get("latitude"), "lon": med.get("longitude"),
+                    "anio": anio, "registros": nm,
+                    "cobertura_pct": (round(100 * nm / esperado_anual(anio), 1)
+                                      if nm is not None else None),
+                })
+            filas_municipio.append({
+                "municipio": muni, "anio": anio, "n_sensores": len(sensores),
+                "registros": n, "esperados": esperado,
+                "cobertura_pct": (round(100 * n / esperado, 1)
+                                  if n is not None and esperado else None),
+                "sensores_con_datos": len(sensores_ok),
+                "sensores_cobertura_ge80": sum(
+                    1 for v in sensores_ok if v / esperado_anual(anio) >= .8),
+            })
+
+    guardar_csv(filas_municipio,
+                f"cobertura_municipio_anio_{args.desde}_{args.hasta}.csv")
+    guardar_csv(filas_sensor,
+                f"cobertura_medidor_anio_{args.desde}_{args.hasta}.csv")
+    print("\nResumen de registros por municipio y año:")
+    for fila in filas_municipio:
+        print(f"  {fila['municipio']:<22} {fila['anio']}: "
+              f"{fila['registros']} registros; cobertura {fila['cobertura_pct']}%")
+
+
+def aplanar_flujo(registro: dict) -> dict:
+    fl = propiedades(registro)
+    fila = {k: fl.get(k) for k in (
+        "meterDate", "timeRank", "meterId", "sourceId", "totalVehicles",
+        "speedAvg", "occupancy", "levelOfService"
+    )}
+    for item in fl.get("lengthIntervals") or []:
+        nombre = item.get("lengthInterval") or (
+            f"{item.get('lengthMin')}-{item.get('lengthMax')}")
+        fila[f"long_{nombre}"] = item.get("vehicles")
+    for item in fl.get("speedIntervals") or []:
+        nombre = item.get("speedInterval") or (
+            f"{item.get('speedMin')}-{item.get('speedMax')}")
+        fila[f"vel_{nombre}"] = item.get("vehicles")
     return fila
 
 
-def ruta_flujos(year, month, day, prov, muni):
-    if day and month:
-        return f"/flows/byDate/{year}/{month}/{day}/byMunicipality/{prov}/{muni}"
-    if month:
-        return f"/flows/byMonth/{year}/{month}/byMunicipality/{prov}/{muni}"
-    return f"/flows/byYear/{year}/byMunicipality/{prov}/{muni}"
+def ruta_flujos(anio: int, mes: int | None, dia: int | None,
+                provincia: int, municipio_id: int) -> str:
+    if mes and dia:
+        return (f"/flows/byDate/{anio}/{mes}/{dia}"
+                f"/byMunicipality/{provincia}/{municipio_id}")
+    if mes:
+        return (f"/flows/byMonth/{anio}/{mes}"
+                f"/byMunicipality/{provincia}/{municipio_id}")
+    return f"/flows/byYear/{anio}/byMunicipality/{provincia}/{municipio_id}"
 
 
-def cmd_flows(session, year, month, day, km, max_paginas, solo=None):
-    medidores = cargar_medidores(session, km)
-    ids = resolver_ids(medidores)
-    if solo:
-        ids = {m: v for m, v in ids.items() if norm(solo) in norm(m)}
-    else:
-        faltan = [m for m in MUNICIPIOS if m not in ids]
-        if faltan:
-            print("Sin ID de municipio para:", ", ".join(faltan), "(se omiten)")
+def cmd_flows(sesion, args):
+    medidores = cargar_medidores(sesion, args.provincia,
+                                 args.max_municipality_id, args.refresh)
+    ids = resolver_ids(medidores, args.provincia, args.max_municipality_id)
+    if args.municipio:
+        buscado = normalizar(args.municipio)
+        ids = {k: v for k, v in ids.items() if buscado in normalizar(k)}
     if not ids:
-        print("Ningún municipio que descargar (revisa --municipio).")
+        logging.error("No hay municipios seleccionados. Revisa el inventario y los IDs.")
         return
-    info_medidor = {m["meterId"]: m for m in medidores}
-    periodo = "_".join(str(x) for x in (year, month, day) if x)
 
-    todos = []
+    info_sensor = {str(m.get("meterId")): m for m in medidores}
+    periodo = "_".join(str(v) for v in (args.year, args.month, args.day) if v)
+    todas_filas = []
     for muni, (prov, mid) in ids.items():
-        ruta = ruta_flujos(year, month, day, prov, mid)
-        print(f"{muni}: {ruta}")
-        flujos = descargar(session, ruta, max_paginas)
-        print(f"  -> {len(flujos)} registros descargados")
+        ruta = ruta_flujos(args.year, args.month, args.day, prov, mid)
+        print(f"\n{muni}: {ruta}")
+        flujos = descargar(sesion, ruta, args.max_pages)
         filas = []
-        for fl in flujos:
-            fila = aplanar_flujo(fl)
-            med = info_medidor.get(fila["meterId"], {})
+        for flujo in flujos:
+            fila = aplanar_flujo(flujo)
+            sensor = info_sensor.get(str(fila.get("meterId")), {})
             filas.append({
-                "municipio": muni,
-                **fila,
-                "meter_desc": med.get("description"),
-                "meter_lat": med.get("latitude"),
-                "meter_lon": med.get("longitude"),
+                "municipio": muni, **fila,
+                "meter_desc": sensor.get("description"),
+                "meter_lat": sensor.get("latitude"),
+                "meter_lon": sensor.get("longitude"),
             })
+        print(f"Registros recibidos: {len(filas)}")
         if filas:
-            slug = norm(muni).replace("-", "_")
-            guardar_csv(filas, f"flujos_{slug}_{periodo}.csv")  # un archivo por municipio
-            todos.extend(filas)
-    if len(ids) > 1 and todos:
-        guardar_csv(todos, f"flujos_todos_{periodo}.csv")
-    elif not todos:
-        print("No se han obtenido flujos.")
+            slug = normalizar(muni)
+            guardar_csv(filas, f"flujos_{slug}_{periodo}.csv")
+            todas_filas.extend(filas)
+    if todas_filas:
+        guardar_csv(todas_filas, f"flujos_todos_{periodo}.csv")
+    else:
+        print("No se han descargado registros. Comprueba año, municipio y disponibilidad.")
+
+
+def construir_parser():
+    parser = argparse.ArgumentParser(
+        description="Descarga inventario de sensores y flujos de tráfico de Open Data Euskadi."
+    )
+    parser.add_argument("modo", choices=["meters", "ids", "probe", "cobertura", "flows"])
+    parser.add_argument("--provincia", type=int, default=1,
+                        help="ID de provincia; 1 suele corresponder a Álava")
+    parser.add_argument("--max-municipality-id", type=int, default=200,
+                        help="último ID municipal que se explora (default: 200)")
+    parser.add_argument("--refresh", action="store_true",
+                        help="ignorar caché y volver a descargar el inventario")
+    parser.add_argument("--year", type=int, default=2023)
+    parser.add_argument("--month", type=int)
+    parser.add_argument("--day", type=int)
+    parser.add_argument("--km", type=float, default=8,
+                        help="conservado por compatibilidad; el inventario municipal no usa radio")
+    parser.add_argument("--max-pages", type=int,
+                        help="limitar páginas para pruebas")
+    parser.add_argument("--page-size", type=int,
+                        help="parámetro _pageSize si el API lo admite")
+    parser.add_argument("--desde", type=int, default=2010)
+    parser.add_argument("--hasta", type=int, default=2026)
+    parser.add_argument("--workers", type=int, default=6)
+    parser.add_argument("--municipio", help="filtrar municipio, por ejemplo Zigoitia")
+    return parser
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("modo", choices=["ids", "meters", "probe", "cobertura", "flows"])
-    ap.add_argument("--provincia", type=int, default=1, help="solo para el modo ids")
-    ap.add_argument("--year", type=int, default=2025)
-    ap.add_argument("--month", type=int)
-    ap.add_argument("--day", type=int)
-    ap.add_argument("--km", type=int, default=8, help="radio de búsqueda de medidores")
-    ap.add_argument("--max-pages", type=int, help="limitar páginas por municipio (pruebas)")
-    ap.add_argument("--page-size", type=int, help="registros por página (_pageSize)")
-    ap.add_argument("--desde", type=int, default=2010, help="año inicial (cobertura)")
-    ap.add_argument("--hasta", type=int, default=2026, help="año final (cobertura)")
-    ap.add_argument("--workers", type=int, default=8, help="peticiones simultáneas")
-    ap.add_argument("--municipio", help="descargar solo este municipio (ej. zigoitia)")
-    args = ap.parse_args()
-
-    global PAGE_SIZE, WORKERS
-    PAGE_SIZE = args.page_size
+    global WORKERS, PAGE_SIZE
+    args = construir_parser().parse_args()
+    if args.month is not None and not 1 <= args.month <= 12:
+        raise SystemExit("--month debe estar entre 1 y 12")
+    if args.day is not None:
+        if args.month is None:
+            raise SystemExit("--day requiere --month")
+        try:
+            date(args.year, args.month, args.day)
+        except ValueError as exc:
+            raise SystemExit(str(exc))
+    if args.desde > args.hasta:
+        raise SystemExit("--desde no puede ser mayor que --hasta")
+    if args.max_municipality_id < 1:
+        raise SystemExit("--max-municipality-id debe ser positivo")
     WORKERS = max(1, args.workers)
+    PAGE_SIZE = args.page_size
 
-    s = requests.Session()
-    s.headers["Accept"] = "*/*"  # el API devuelve application/geo+json en medidores
-    if args.modo == "ids":
-        cmd_ids(s, args.provincia)
-    elif args.modo == "cobertura":
-        cmd_cobertura(s, args.km, args.desde, args.hasta)
-    elif args.modo == "probe":
-        cmd_probe(s, args.km)
-    elif args.modo == "meters":
-        cmd_meters(s, args.km)
-    else:
-        cmd_flows(s, args.year, args.month, args.day, args.km, args.max_pages,
-                  args.municipio)
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    sesion = configurar_sesion()
+    try:
+        if args.modo == "ids":
+            cmd_ids(sesion, args)
+        elif args.modo == "meters":
+            cmd_meters(sesion, args)
+        elif args.modo == "probe":
+            cmd_probe(sesion, args)
+        elif args.modo == "cobertura":
+            cmd_cobertura(sesion, args)
+        elif args.modo == "flows":
+            cmd_flows(sesion, args)
+    finally:
+        sesion.close()
 
 
 if __name__ == "__main__":
     main()
+
+
+# EN ANACONDA PROMPT
+# cd C:\Users\Public\Documentos\aritz-ezkerro\rural-mobility-energy-model\rural-mobility-energy-model\temp_docs
+# python -m pip install requests
+
+# python API_flow.py meters --refresh
+# python API_flow.py ids --provincia 1 --max-municipality-id 200
+# python API_flow.py cobertura --desde 2018 --hasta 2024
+# python API_flow.py flows --year 2023 --municipio Zigoitia --max-pages 2
+# python API_flow.py flows --year 2023 --municipio Zigoitia
+# python API_flow.py flows --year 2023
+# 
