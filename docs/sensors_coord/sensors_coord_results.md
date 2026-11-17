@@ -9,6 +9,8 @@ Download of traffic sensors (*meters*) from the Open Data Euskadi API for 24 sel
 
 ![Results of the traffic sensors from the API](../../assets/sensors_coord_img.png)
 
+![Results of the traffic sensors from the API](../../assets/sensors_coord_map.png)
+
 ---
 
 ## Context and purpose

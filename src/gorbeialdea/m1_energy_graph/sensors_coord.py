@@ -15,12 +15,20 @@ The 24 municipalities are those bordering the case study (Gorbeialdea).
 This is a preliminary step: this inventory is later filtered in Excel to
 keep only the sensors of interest.
 
-Location: C:\Users\Public\Documentos\aritz-ezkerro\rural-mobility-energy-model\rural-mobility-energy-model\src\gorbiealdea\m1_energy_graph\sensor_coord.py
-
 Output (relative to the repository root):
     docs/sensors_coord/sensors_coord.csv
     docs/sensors_coord/sensors_coord_summary.csv  (sensors per municipality, including 0)
     docs/sensors_coord_errors.txt                 (if there are errors)
+
+Location: C:\Users\Public\Documentos\aritz-ezkerro\rural-mobility-energy-model\rural-mobility-energy-model\src\gorbiealdea\m1_energy_graph\sensor_coord.py
+
+
+PROMPT:
+
+cd C:\Users\Public\Documentos\aritz-ezkerro\rural-mobility-energy-model\rural-mobility-energy-model\src\gorbeialdea\m1_energy_graph
+
+python sensors_coord.py
+
 """
 
 import csv
