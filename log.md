@@ -72,3 +72,7 @@
 ## 2026-11-16 · Renombrar sensors_coord y limpiar archivos temporales
 
 **Start:** 2026-11-16 20:53 · **End:** 2026-11-16 20:53 · **Duration:** 0 min
+
+## 2026-11-17 · Add traffic sensor results and summary files; include additional map image
+
+**Start:** 2026-11-17 16:25 · **End:** 2026-11-17 16:26 · **Duration:** 1 min
